@@ -1,20 +1,6 @@
 // XWearSpringBone.cs
 // Lightweight Verlet-based secondary physics for VRoid .xwear clothing
 // (hair, ribbons, laces, dangling accessories).
-//
-// Mirrors the most-used parameters of VRChat's VRCPhysBone without
-// requiring the VRChat SDK.  Each component sits on the root Transform of a
-// chain (a "secondary" bone such as J_Sec_L_Bust1 or J_Sec_L_CoatSkirtBack),
-// then walks the child hierarchy to build a list of bone segments.
-//
-// Pipeline per FixedUpdate (matches VRChat PhysBone):
-//   1. Verlet integration         (move particles)
-//   2. Constraint pass            (preserve segment lengths)
-//   3. Collision pass (NEW)       (push particles out of colliders)
-//
-// Collisions are picked up via Physics.OverlapSphere each frame, which
-// means ANY Collider (Sphere/Capsule/Box/Mesh) attached to the character
-// body or any nearby obstacle will keep hair from clipping through.
 
 using System;
 using System.Collections.Generic;
@@ -26,7 +12,7 @@ namespace XWearImporter
     [AddComponentMenu("XWear/Spring Bone")]
     public class XWearSpringBone : MonoBehaviour
     {
-        // --- Parameters from .xwear (all exposed in Inspector) ---------------
+        // --- Parameters from .xwear ------------------------------------------
         [Header("Pull / return force (0..1)")]
         [Range(0f, 1f)] public float pull = 0.5f;
 
@@ -54,7 +40,7 @@ namespace XWearImporter
         [Header("Maximum length change per segment per frame")]
         public float maxDeltaPerFrame = 0.05f;
 
-        [Header("Bone collision radius (matches VRoid .xwear PhysBoneParam.radius)")]
+        [Header("Bone collision radius")]
         public float radius = 0.01f;
 
         // --- Collision parameters --------------------------------------------
@@ -82,10 +68,8 @@ namespace XWearImporter
         private bool       _initialized;
         private Transform  _rootBone;
 
-        // Per-frame collision buffer (reused, never allocated)
         private readonly Collider[] _overlapBuf = new Collider[32];
 
-        // -----------------------------------------------------------------------
         public void Initialize(Transform rootBone)
         {
             _rootBone = rootBone;
@@ -119,14 +103,12 @@ namespace XWearImporter
 
         void CollectBones(Transform t, List<Particle> list)
         {
-            // Skip if already part of another XWearSpringBone chain
             if (t != _rootBone && t.GetComponent<XWearSpringBone>() != null) return;
             list.Add(new Particle { bone = t });
             for (int i = 0; i < t.childCount; i++)
                 CollectBones(t.GetChild(i), list);
         }
 
-        // -----------------------------------------------------------------------
         void FixedUpdate()
         {
             if (!_initialized || _particles == null || _particles.Length == 0) return;
@@ -134,7 +116,7 @@ namespace XWearImporter
 
             float dt = Time.fixedDeltaTime;
 
-            // 1. Integrate (Verlet):  newPos = pos + (pos - prev) * (1-spring) + force*dt^2
+            // 1. Integrate
             for (int i = 0; i < _particles.Length; i++)
             {
                 var p = _particles[i];
@@ -159,7 +141,7 @@ namespace XWearImporter
                 _particles[i] = p;
             }
 
-            // 2. Constraint pass: preserve segment rest lengths
+            // 2. Constraint pass
             const int iterations = 4;
             for (int iter = 0; iter < iterations; iter++)
             {
@@ -187,7 +169,7 @@ namespace XWearImporter
                 }
             }
 
-            // 3. Collision pass: push particles out of nearby Colliders
+            // 3. Collision pass
             if (useCollisions)
                 ResolveCollisions();
 
@@ -200,11 +182,8 @@ namespace XWearImporter
             }
         }
 
-        // -----------------------------------------------------------------------
         void ResolveCollisions()
         {
-            // Query OverlapSphere once per particle; cheap because the buffer
-            // is reused and Physics broadphase is spatially hashed.
             float queryRadius = Mathf.Max(collisionQueryRadius, 0.001f);
             for (int i = 1; i < _particles.Length; i++)
             {
@@ -219,26 +198,19 @@ namespace XWearImporter
                     Collider col = _overlapBuf[h];
                     if (col == null) continue;
 
-                    // Closest point on the collider to our particle
                     Vector3 closest = col.ClosestPoint(p.currentPosWorld);
                     Vector3 delta = p.currentPosWorld - closest;
 
-                    // Get collider's effective radius.  SphereCollider has
-                    // an explicit radius; for Capsule/Box we use a conservative
-                    // approximation derived from bounds size.
                     float colRadius = GetColliderRadius(col);
                     float minDist   = colRadius + this.radius;
 
                     float dist = delta.magnitude;
                     if (dist < minDist && dist > 1e-5f)
                     {
-                        // Push particle out along the surface normal
                         p.currentPosWorld = closest + (delta / dist) * minDist;
                     }
                     else if (dist <= 1e-5f)
                     {
-                        // Particle is INSIDE the collider; nudge along an
-                        // arbitrary axis so we don't divide by zero.
                         p.currentPosWorld = closest + Vector3.up * minDist;
                     }
                 }
@@ -268,7 +240,6 @@ namespace XWearImporter
             }
         }
 
-        // -----------------------------------------------------------------------
         Vector3 ReturnForce(int i, float dt)
         {
             var p = _particles[i];
@@ -288,14 +259,10 @@ namespace XWearImporter
             return false;
         }
 
-        // -----------------------------------------------------------------------
-        // Editor visualisation: draw the rest pose so you can tune springs
-        // visually.  Only enabled when the GameObject is selected.
         void OnDrawGizmosSelected()
         {
             if (_rootBone == null) return;
             Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.6f);
-            // Draw sphere around each bone so the user can see the collision volume
             for (int i = 1; i < _particles.Length; i++)
             {
                 Gizmos.DrawWireSphere(_particles[i].bone.position, this.radius);

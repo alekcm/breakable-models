@@ -1,6 +1,6 @@
 // XWearAsset.cs
 // Runtime asset class so imported .xwear files have a stable reference
-// inside the AssetDatabase.  Also stores parsed PhysBone (secondary physics)
+// inside the AssetDatabase. Also stores parsed PhysBone (secondary physics)
 // chains so the importer can recreate them on the prefab.
 
 using System;
@@ -21,7 +21,7 @@ namespace XWearImporter
         public float maxStretch;
         public float maxSquish;
         public int   integrationType;
-        public int   allowCollision;        // 1 if the chain should bounce off body colliders
+        public int   allowCollision; // 1 if the chain should bounce off body colliders
     }
 
     public class XWearAsset : ScriptableObject
@@ -44,15 +44,13 @@ namespace XWearImporter
             if (xResources == null || !xResources.HasField("Components")) return;
             foreach (JSONObject comp in xResources.GetField("Components").list)
             {
-                // Detect by structural shape rather than $type string, since
-                // different .xwear versions use different type names.
                 if (!comp.HasField("PhysBoneParam")) continue;
                 JSONObject p = comp.GetField("PhysBoneParam");
 
                 physBones.Add(new XWearPhysBoneData
                 {
                     gameObjectGuid  = comp.GetField("GameObjectGuid").str ?? "",
-                    rootBoneGuid     = p.GetField("rootTransformGuid").str ?? "",
+                    rootBoneGuid    = p.GetField("rootTransformGuid").str ?? "",
                     pull            = (float)p.GetField("pull").f,
                     stiffness       = (float)p.GetField("stiffness").f,
                     spring          = (float)p.GetField("spring").f,

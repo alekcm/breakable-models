@@ -1,4 +1,4 @@
-// XWearImporter.cs (v10 — decoupled JSONObject architecture)
+// XWearImporter.cs (v11 — corrected XWear axis conversion)
 // Unity 6 (6000.x) Editor importer for VRoid .xwear clothing/accessory files.
 
 using System;
@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace XWearImporter
 {
-    [ScriptedImporter(version: 10, ext: "xwear")]
+    [ScriptedImporter(version: 11, ext: "xwear")]
     public class XWearImporter : ScriptedImporter
     {
         public bool importMesh      = true;
@@ -20,11 +20,32 @@ namespace XWearImporter
         public bool importMaterials = true;
         public bool importTextures  = true;
         public float importScale    = 1.0f;
-        public bool flipZ           = true;
+
+        public enum AxisConversion
+        {
+            [Tooltip("Use XWear coordinates as-is. This is the correct mode for VRoid Studio .xwear in Unity when clothing appears backwards only after the old Flip Z importer path.")]
+            None,
+
+            [Tooltip("Legacy mode from older importer versions: mirror Z and reverse triangle winding. Use only for already validated assets that require it.")]
+            MirrorZ,
+
+            [Tooltip("Rotate imported mesh/skeleton by 180 degrees around Y. Usually NOT recommended for clothing because it swaps world left/right.")]
+            RotateY180,
+
+            [Tooltip("Mirror Z, then rotate 180 around Y. Experimental fallback.")]
+            MirrorZThenRotateY180
+        }
+
+        [Header("Coordinate Conversion")]
+        [Tooltip("Axis conversion baked during import. For your VRoid/Mixamo setup use None, not a runtime 180-degree Transform rotation. If old imports show clothing front on the character's back, reimport with None.")]
+        public AxisConversion axisConversion = AxisConversion.None;
+
+        [HideInInspector]
+        public bool flipZ = false; // Legacy serialized field from v10. Kept so old .meta files do not break, but no longer used.
 
         public override void OnImportAsset(AssetImportContext ctx)
         {
-            Debug.Log($"[XWear v10] Importing {ctx.assetPath}");
+            Debug.Log($"[XWear v11] Importing {ctx.assetPath} | axisConversion={axisConversion}");
 
             XWearAsset asset = new XWearAsset();
             asset.sourcePath = ctx.assetPath;
@@ -232,6 +253,37 @@ namespace XWearImporter
             ctx.SetMainObject(root);
         }
 
+        Vector3 ConvertPoint(Vector3 v)
+        {
+            switch (axisConversion)
+            {
+                case AxisConversion.MirrorZ:
+                    return new Vector3(v.x, v.y, -v.z);
+                case AxisConversion.RotateY180:
+                    return new Vector3(-v.x, v.y, -v.z);
+                case AxisConversion.MirrorZThenRotateY180:
+                    // Mirror Z -> (x,y,-z), then rotate Y 180 -> (-x,y,z)
+                    return new Vector3(-v.x, v.y, v.z);
+                case AxisConversion.None:
+                default:
+                    return v;
+            }
+        }
+
+        Vector3 ConvertDirection(Vector3 v)
+        {
+            // Directions use the same linear part as points, without translation.
+            return ConvertPoint(v);
+        }
+
+        bool ShouldReverseTriangleWinding()
+        {
+            // Mirroring changes handedness, rotations do not. Reverse winding only for
+            // conversions with an odd number of mirrored axes.
+            return axisConversion == AxisConversion.MirrorZ ||
+                   axisConversion == AxisConversion.MirrorZThenRotateY180;
+        }
+
         void LoadTextures(AssetImportContext ctx, XWearAsset asset, Dictionary<string, Texture2D> texturesByGuid)
         {
             if (!importTextures || asset.xItemJson == null || !asset.xItemJson.HasField("XResourceTextures"))
@@ -279,13 +331,14 @@ namespace XWearImporter
             for (int i = 0; i < vCount; i++)
             {
                 var p = meshData.positions[i] * importScale;
-                pos[i] = flipZ ? new Vector3(p.x, p.y, -p.z) : p;
+                pos[i] = ConvertPoint(p);
 
                 var n = meshData.normals[i];
-                norm[i] = flipZ ? new Vector3(n.x, n.y, -n.z) : n;
+                norm[i] = ConvertDirection(n);
 
                 var t = meshData.tangents[i];
-                tang[i] = flipZ ? new Vector4(t.x, t.y, -t.z, t.w) : t;
+                Vector3 tangentDirection = ConvertDirection(new Vector3(t.x, t.y, t.z));
+                tang[i] = new Vector4(tangentDirection.x, tangentDirection.y, tangentDirection.z, t.w);
 
                 uvs[i] = meshData.uvs[i];
             }
@@ -337,7 +390,7 @@ namespace XWearImporter
                     int[] indices = new int[sm.indices.Length];
                     for (int t = 0; t < triCount; t++)
                     {
-                        if (flipZ)
+                        if (ShouldReverseTriangleWinding())
                         {
                             indices[t * 3 + 0] = sm.indices[t * 3 + 0];
                             indices[t * 3 + 1] = sm.indices[t * 3 + 2];
@@ -414,9 +467,7 @@ namespace XWearImporter
                         {
                             var M_world = meshData.bindposes[i].inverse;
                             var worldPos = M_world.GetColumn(3) * importScale;
-                            if (flipZ) worldPos.z = -worldPos.z;
-
-                            t.position = worldPos;
+                            t.position = ConvertPoint(worldPos);
                         }
                         ordered.Add(t);
                     }
@@ -462,7 +513,7 @@ namespace XWearImporter
                 else
                 {
                     var pos = new Vector3((float)lp.GetField("x").ff, (float)lp.GetField("y").ff, (float)lp.GetField("z").ff) * importScale;
-                    go.transform.localPosition = flipZ ? new Vector3(pos.x, pos.y, -pos.z) : pos;
+                    go.transform.localPosition = ConvertPoint(pos);
                 }
 
                 go.transform.localRotation = Quaternion.identity;

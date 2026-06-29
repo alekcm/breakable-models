@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 23cc52eef4665d84b86ae7f8fbff7170, type: 3}
+  m_Name: HeadCollisionMask_123@T-Pose 1
+  m_EditorClassIdentifier: Assembly-CSharp::CharacterEditor.Hair.Proc.HeadCollisionMaskDefinition
+  center: {x: 0, y: 0.06, z: 0}
+  radii: {x: 0.08, y: 0.115, z: 0.08}
+  surfacePadding: 0.012
+  softness: 0.08
+  affectUntilT: 1
+  sourceHeadLocalBounds:
+    m_Center: {x: 9.313226e-10, y: -0.006623687, z: 0.0005011072}
+    m_Extent: {x: 0.013865293, y: 0.016712505, z: 0.0076445453}
+  sourceModelPath: 
+  sourceHeadBoneName: J_Bip_C_Head
